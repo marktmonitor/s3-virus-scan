@@ -1,0 +1,6 @@
+.idea
+.env
+tmp
+test
+config.example.yaml
+bin
