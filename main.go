@@ -94,6 +94,16 @@ func main() {
 		}
 	}()
 
+	go func() {
+		for {
+			log.Println("Deleting old downloaded files")
+			if err = deleteOldFiles(); err != nil {
+				log.Printf("error while trying to delete old files: %v", err)
+			}
+			time.Sleep(10 * time.Minute)
+		}
+	}()
+
 	for {
 		log.Println("worker: Start polling")
 
@@ -213,7 +223,7 @@ func handleMessage(msg *sqs.Message, maxSize int) error {
 						}
 					} else if exitStatus == 1 {
 						if appConfig.DeleteInfectedFiles {
-							log.Printf("s3://%s/%s is infected(tagging)", record.S3.Bucket.Name, record.S3.Object.Key)
+							log.Printf("s3://%s/%s is infected(deleting)", record.S3.Bucket.Name, record.S3.Object.Key)
 							if err = deleteObject(record.S3.Bucket.Name, record.S3.Object.Key); err != nil {
 								return err
 							}
@@ -344,6 +354,37 @@ func updateClamDB() error {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func deleteOldFiles() error {
+	files, err := os.ReadDir(appConfig.TempStorage)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	for _, f := range files {
+		if !f.IsDir() {
+			info, err := f.Info()
+			if err != nil {
+				log.Printf("error while trying to get file info for file: %s, got err: %v", f.Name(), err)
+				continue
+			}
+
+			if now.Add(-10 * time.Minute).After(info.ModTime()) {
+				if err = os.Remove(path.Join(appConfig.TempStorage, f.Name())); err != nil {
+					log.Printf("error while trying to delete file in clean up old files: %v", err)
+					continue
+				}
+				log.Printf("deleted old file: %s", f.Name())
+			}
+		} else {
+			// Remove the whole dir
+		}
 	}
 
 	return nil
